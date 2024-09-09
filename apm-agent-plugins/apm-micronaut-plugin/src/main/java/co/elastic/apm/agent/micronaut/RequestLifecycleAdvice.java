@@ -39,9 +39,11 @@ public class RequestLifecycleAdvice {
     @Advice.AssignReturned.ToReturned(typing = Assigner.Typing.DYNAMIC)
     @Nullable
     public static ExecutionFlow<MutableHttpResponse<?>> onExit(
-        @Advice.FieldValue("request") @Nullable HttpRequest<?> httpRequest,
+        @Advice.Argument(value = 0, typing = Assigner.Typing.DYNAMIC) @Nullable HttpRequest<?> httpRequest,
         @Advice.Return @Nullable ExecutionFlow<MutableHttpResponse<?>> returnFlow,
         @Advice.Thrown @Nullable Throwable t) {
+
+        logger.debug("normalFlow exit handler, request: {}", httpRequest);
 
         if(httpRequest == null) {
             return null;
@@ -76,7 +78,7 @@ public class RequestLifecycleAdvice {
     {
 
         if(response != null) {
-            logger.info("finishing transaction, {}", response.toString());
+            logger.debug("finishing transaction, {}", response.toString());
 
             trx
                 .withResultIfUnset(ResultUtil.getResultByHttpStatus(response.code()))
@@ -87,6 +89,8 @@ public class RequestLifecycleAdvice {
             trxResponse
                 .withFinished(true)
                 .withStatusCode(response.code());
+        } else {
+            logger.debug("finish transaction called with empty response");
         }
 
         trx.end();

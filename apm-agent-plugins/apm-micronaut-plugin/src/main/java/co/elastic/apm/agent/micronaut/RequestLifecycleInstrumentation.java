@@ -38,7 +38,7 @@ public class RequestLifecycleInstrumentation extends MicronautInstrumentation {
 
     @Override
     public ElementMatcher<? super MethodDescription> getMethodMatcher() {
-        return named("normalFlow");
+        return named("normalFlow").and(takesArgument(0, named("io.micronaut.http.HttpRequest")));
     }
 
     @Override
