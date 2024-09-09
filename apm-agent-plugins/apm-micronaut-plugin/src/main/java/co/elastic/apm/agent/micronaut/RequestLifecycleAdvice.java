@@ -18,132 +18,55 @@
  */
 package co.elastic.apm.agent.micronaut;
 
-import co.elastic.apm.agent.tracer.AbstractSpan;
-import co.elastic.apm.agent.tracer.GlobalTracer;
+import co.elastic.apm.agent.sdk.logging.Logger;
+import co.elastic.apm.agent.sdk.logging.LoggerFactory;
 import co.elastic.apm.agent.tracer.Transaction;
-import co.elastic.apm.agent.tracer.dispatch.AbstractHeaderGetter;
-import co.elastic.apm.agent.tracer.dispatch.TextHeaderGetter;
-import co.elastic.apm.agent.tracer.metadata.Request;
 import co.elastic.apm.agent.tracer.metadata.Response;
 import co.elastic.apm.agent.tracer.util.ResultUtil;
 import io.micronaut.core.execution.ExecutionFlow;
-import io.micronaut.core.propagation.PropagatedContext;
-import io.micronaut.http.HttpHeaders;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.MutableHttpResponse;
 import net.bytebuddy.asm.Advice;
+import net.bytebuddy.implementation.bytecode.assign.Assigner;
 
 import javax.annotation.Nullable;
 
 @SuppressWarnings("unused")
 public class RequestLifecycleAdvice {
-    private static class ScopeWrapper {
-        private final PropagatedContext.Scope propagatedScope;
-        private final Transaction<?> transaction;
+    private static final Logger logger = LoggerFactory.getLogger(RequestLifecycleAdvice.class);
 
-        public ScopeWrapper(PropagatedContext.Scope propagatedScope, Transaction<?> transaction) {
-            this.propagatedScope = propagatedScope;
-            this.transaction = transaction;
-        }
-
-        public PropagatedContext.Scope getPropagatedScope() {
-            return propagatedScope;
-        }
-
-        public Transaction<?> getTransaction() {
-            return transaction;
-        }
-    }
-
-    public static class HeaderGetter extends AbstractHeaderGetter<String, HttpHeaders> implements TextHeaderGetter<HttpHeaders> {
-
-        @Nullable
-        @Override
-        public String getFirstHeader(String headerName, HttpHeaders carrier) {
-            return carrier.get(headerName);
-        }
-    }
-
+    @Advice.OnMethodExit(suppress = Throwable.class, onThrowable = Throwable.class, inline = false)
+    @Advice.AssignReturned.ToReturned(typing = Assigner.Typing.DYNAMIC)
     @Nullable
-    @Advice.OnMethodEnter(suppress = Throwable.class, inline = false)
-    public static Object onEnter(
-            @Advice.FieldValue("request") @Nullable Object requestUntyped
-        ) {
-        if(requestUntyped == null) {
+    public static ExecutionFlow<MutableHttpResponse<?>> onExit(
+        @Advice.FieldValue("request") @Nullable HttpRequest<?> httpRequest,
+        @Advice.Return @Nullable ExecutionFlow<MutableHttpResponse<?>> returnFlow,
+        @Advice.Thrown @Nullable Throwable t) {
+
+        if(httpRequest == null) {
             return null;
         }
 
-        HttpRequest<?> typedRequest = (HttpRequest<?>) requestUntyped;
-
-        Transaction<?> trx = GlobalTracer.get().startChildTransaction(typedRequest.getHeaders(), new HeaderGetter(), Thread.currentThread().getContextClassLoader());
+        Transaction<?> trx = HttpRequestUtil.findTransaction(httpRequest);
 
         if(trx == null) {
             return null;
         }
 
-        trx.setFrameworkName("micronaut");
-
-        StringBuilder nameBuilder = trx.getAndOverrideName(AbstractSpan.PRIORITY_LOW_LEVEL_FRAMEWORK);
-
-        if(nameBuilder == null) {
-            trx.end();
+        if(t != null) {
+            finishTransaction(trx, null, t);
             return null;
         }
 
-        nameBuilder.append(typedRequest.getMethodName());
-        nameBuilder.append(" ");
-        nameBuilder.append(typedRequest.getUri().getPath());
-
-        Request request = trx.getContext().getRequest();
-
-        request.getSocket()
-            .withRemoteAddress(typedRequest.getRemoteAddress().getAddress().getHostAddress());
-
-        request.withHttpVersion(typedRequest.getHttpVersion().name())
-            .withMethod(typedRequest.getMethodName());
-
-        request.getUrl()
-            .withProtocol("http")
-            .withHostname(typedRequest.getRemoteAddress().getAddress().getHostAddress())
-            .withPort(typedRequest.getServerAddress().getPort())
-            .withPathname(typedRequest.getUri().getPath())
-            .withSearch(typedRequest.getUri().getQuery());
-
-        PropagatedContextElement elasticContextElement = new PropagatedContextElement(trx);
-
-        PropagatedContext ctx = PropagatedContext.getOrEmpty().plus(elasticContextElement);
-
-        return new ScopeWrapper(ctx.propagate(), trx);
-    }
-
-    @Advice.OnMethodExit(suppress = Throwable.class, onThrowable = Throwable.class, inline = false)
-    public static void onExit(
-        @Advice.Enter @Nullable Object scopeUntyped,
-        @Advice.Return @Nullable ExecutionFlow<MutableHttpResponse<?>> returnFlow,
-        @Advice.Thrown @Nullable Throwable t) {
-
-        if(scopeUntyped == null) {
-            return;
-        }
-
-        ScopeWrapper wrapper = (ScopeWrapper) scopeUntyped;
-
-        PropagatedContext.Scope scope = wrapper.propagatedScope;
-
-        scope.close();
-
-        Transaction<?> trx = wrapper.getTransaction();
-
-        if(t != null) {
-            finishTransaction(trx, null, t);
-            return;
-        }
-
         if (returnFlow == null) {
-            return;
+            return null;
         }
 
-        returnFlow.onComplete((res, ex) -> finishTransaction(trx, res, ex));
+        return returnFlow.map((res) -> {
+            finishTransaction(trx, res, null);
+            return res;
+        });
+
     }
 
     private static void finishTransaction(
@@ -151,7 +74,10 @@ public class RequestLifecycleAdvice {
         @Nullable MutableHttpResponse<?> response,
         @Nullable Throwable exception)
     {
+
         if(response != null) {
+            logger.info("finishing transaction, {}", response.toString());
+
             trx
                 .withResultIfUnset(ResultUtil.getResultByHttpStatus(response.code()))
                 .captureException(exception);

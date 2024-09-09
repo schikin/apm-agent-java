@@ -18,32 +18,31 @@
  */
 package co.elastic.apm.agent.micronaut;
 
-import co.elastic.apm.agent.tracer.Transaction;
-import io.micronaut.core.annotation.Nullable;
-import io.micronaut.core.propagation.ThreadPropagatedContextElement;
+import net.bytebuddy.description.NamedElement;
+import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.matcher.ElementMatcher;
 
-public class PropagatedContextElement implements ThreadPropagatedContextElement<Transaction<?>> {
-    private Transaction<?> transaction;
+import static net.bytebuddy.matcher.ElementMatchers.*;
 
-    public PropagatedContextElement(Transaction<?> transaction) {
-        this.transaction = transaction;
-    }
-
-    public Transaction<?> getTransaction() {
-        return transaction;
-    }
-
-    public void setTransaction(Transaction<?> transaction) {
-        this.transaction = transaction;
+public class HttpServerContextInstrumentation extends MicronautInstrumentation {
+    @Override
+    public ElementMatcher<? super NamedElement> getTypeMatcherPreFilter() {
+        return nameStartsWith("io.micronaut.http");
     }
 
     @Override
-    public @Nullable Transaction<?> updateThreadContext() {
-        return transaction.activate();
+    public ElementMatcher<? super TypeDescription> getTypeMatcher() {
+        return hasSuperType(named("io.micronaut.http.context.ServerHttpRequestContext"));
     }
 
     @Override
-    public void restoreThreadContext(@Nullable Transaction<?> oldState) {
-        oldState.deactivate();
+    public ElementMatcher<? super MethodDescription> getMethodMatcher() {
+        return isConstructor();
+    }
+
+    @Override
+    public String getAdviceClassName() {
+        return "co.elastic.apm.agent.micronaut.HttpServerContextAdvice";
     }
 }

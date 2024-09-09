@@ -20,31 +20,29 @@ package co.elastic.apm.agent.micronaut;
 
 import co.elastic.apm.agent.tracer.AbstractSpan;
 import co.elastic.apm.agent.tracer.Transaction;
-import io.micronaut.core.propagation.PropagatedContext;
+import io.micronaut.http.HttpRequest;
 import io.micronaut.web.router.MethodBasedRouteInfo;
 import io.micronaut.web.router.RouteInfo;
 import io.micronaut.web.router.RouteMatch;
 import net.bytebuddy.asm.Advice;
-import java.util.Optional;
+
+import javax.annotation.Nullable;
 
 public class RouteExecutorAdvice {
     @Advice.OnMethodEnter(suppress = Throwable.class, inline = false)
-    public static void onEnter(@Advice.Argument(1) RouteMatch<?> match) {
-        Optional<PropagatedContext> ctxOpt = PropagatedContext.find();
+    public static void onEnter(
+        @Nullable @Advice.Argument(1) RouteMatch<?> match,
+        @Nullable @Advice.Argument(2) HttpRequest<?> request) {
 
-        if(ctxOpt.isEmpty()) {
+        if(request == null || match == null) {
             return;
         }
 
-        PropagatedContext ctx = ctxOpt.get();
+        Transaction<?> trx = HttpRequestUtil.findTransaction(request);
 
-        PropagatedContextElement ctxElement = ctx.get(PropagatedContextElement.class);
-
-        if(ctxElement == null) {
+        if(trx == null) {
             return;
         }
-
-        Transaction<?> trx = ctxElement.getTransaction();
 
         RouteInfo<?> routeInfo = match.getRouteInfo();
 
