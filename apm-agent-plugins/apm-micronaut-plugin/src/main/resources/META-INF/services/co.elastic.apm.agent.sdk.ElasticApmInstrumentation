@@ -1,4 +1,5 @@
-co.elastic.apm.agent.micronaut.RequestLifecycleInstrumentation
+co.elastic.apm.agent.micronaut.RequestLifecycleInstrumentation43
+co.elastic.apm.agent.micronaut.RequestLifecycleInstrumentation40
 co.elastic.apm.agent.micronaut.RouteExecutorInstrumentation
 co.elastic.apm.agent.micronaut.PropagatedContextInstrumentation
 co.elastic.apm.agent.micronaut.HttpServerContextInstrumentation

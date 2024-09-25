@@ -26,28 +26,25 @@ import co.elastic.apm.agent.tracer.util.ResultUtil;
 import io.micronaut.core.execution.ExecutionFlow;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.MutableHttpResponse;
-import net.bytebuddy.asm.Advice;
-import net.bytebuddy.implementation.bytecode.assign.Assigner;
 
 import javax.annotation.Nullable;
 
-@SuppressWarnings("unused")
-public class RequestLifecycleAdvice {
-    private static final Logger logger = LoggerFactory.getLogger(RequestLifecycleAdvice.class);
+public class RequestLifeCycleAdviceHelper {
+    private static final Logger logger = LoggerFactory.getLogger(RequestLifeCycleAdviceHelper.class);
 
-    @Advice.OnMethodExit(suppress = Throwable.class, onThrowable = Throwable.class, inline = false)
-    @Advice.AssignReturned.ToReturned(typing = Assigner.Typing.DYNAMIC)
     @Nullable
-    public static ExecutionFlow<MutableHttpResponse<?>> onExit(
-        @Advice.Argument(value = 0, typing = Assigner.Typing.DYNAMIC) @Nullable HttpRequest<?> httpRequest,
-        @Advice.Return @Nullable ExecutionFlow<MutableHttpResponse<?>> returnFlow,
-        @Advice.Thrown @Nullable Throwable t) {
-
-        logger.debug("normalFlow exit handler, request: {}", httpRequest);
+    public static ExecutionFlow<MutableHttpResponse<?>> onNormalFlowExit(
+        @Nullable HttpRequest<?> httpRequest,
+        @Nullable ExecutionFlow<MutableHttpResponse<?>> returnFlow,
+        @Nullable Throwable t) {
 
         if(httpRequest == null) {
+            logger.debug("normalFlow exit handler, request is null, this should not occur under normal circumstances");
+
             return null;
         }
+
+        logger.debug("normalFlow exit handler, request: {}", httpRequest);
 
         Transaction<?> trx = HttpRequestUtil.findTransaction(httpRequest);
 

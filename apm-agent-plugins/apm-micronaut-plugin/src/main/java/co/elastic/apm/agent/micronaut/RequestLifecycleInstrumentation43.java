@@ -18,6 +18,7 @@
  */
 package co.elastic.apm.agent.micronaut;
 
+import net.bytebuddy.description.ModifierReviewable;
 import net.bytebuddy.description.NamedElement;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.type.TypeDescription;
@@ -25,15 +26,11 @@ import net.bytebuddy.matcher.ElementMatcher;
 
 import static net.bytebuddy.matcher.ElementMatchers.*;
 
-public class RequestLifecycleInstrumentation extends MicronautInstrumentation {
-    @Override
-    public ElementMatcher<? super NamedElement> getTypeMatcherPreFilter() {
-        return nameStartsWith("io.micronaut.http.server");
-    }
-
+//instrument for Micronaut 4.3+, based on the availability of of deprecated method
+public class RequestLifecycleInstrumentation43 extends RequestLifeCycleInstrumentation {
     @Override
     public ElementMatcher<? super TypeDescription> getTypeMatcher() {
-        return hasSuperType(named("io.micronaut.http.server.RequestLifecycle"));
+        return hasSuperType(named("io.micronaut.http.server.RequestLifecycle")).and(hasDeprecatedNormalFlow());
     }
 
     @Override
@@ -43,6 +40,6 @@ public class RequestLifecycleInstrumentation extends MicronautInstrumentation {
 
     @Override
     public String getAdviceClassName() {
-        return "co.elastic.apm.agent.micronaut.RequestLifecycleAdvice";
+        return "co.elastic.apm.agent.micronaut.RequestLifecycleAdvice43";
     }
 }

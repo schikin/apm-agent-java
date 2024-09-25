@@ -18,6 +18,8 @@
  */
 package co.elastic.apm.agent.micronaut;
 
+import co.elastic.apm.agent.sdk.logging.Logger;
+import co.elastic.apm.agent.sdk.logging.LoggerFactory;
 import co.elastic.apm.agent.tracer.AbstractSpan;
 import co.elastic.apm.agent.tracer.Transaction;
 import io.micronaut.http.HttpRequest;
@@ -29,11 +31,12 @@ import net.bytebuddy.asm.Advice;
 import javax.annotation.Nullable;
 
 public class RouteExecutorAdvice {
+    private static final Logger logger = LoggerFactory.getLogger(RouteExecutorAdvice.class);
+
     @Advice.OnMethodEnter(suppress = Throwable.class, inline = false)
     public static void onEnter(
         @Nullable @Advice.Argument(1) RouteMatch<?> match,
         @Nullable @Advice.Argument(2) HttpRequest<?> request) {
-
         if(request == null || match == null) {
             return;
         }
@@ -49,7 +52,25 @@ public class RouteExecutorAdvice {
         if(routeInfo instanceof MethodBasedRouteInfo) {
             MethodBasedRouteInfo<?,?> methodBasedRouteInfo = (MethodBasedRouteInfo<?,?>) routeInfo;
 
-            String controllerName = methodBasedRouteInfo.getTargetMethod().getDeclaringType().getSimpleName();
+            if(methodBasedRouteInfo.getTargetMethod() == null) {
+                return;
+            }
+
+            Class<?> type = methodBasedRouteInfo.getTargetMethod().getDeclaringType();
+
+            logger.debug("declaring type: {}", type.getSimpleName());
+
+            String controllerName = type.getSimpleName();
+
+            if(type.getSimpleName().contains("$Intercepted")) {
+                if(type.getSuperclass() != null) {
+                    logger.debug("intercepted type detected - resolving to super type: {}", type.getSuperclass().getSimpleName());
+                    controllerName = type.getSuperclass().getSimpleName();
+                } else {
+                    logger.debug("intercepted type detected - failed to resolve original type name");
+                }
+            }
+
             String methodName = methodBasedRouteInfo.getTargetMethod().getName();
 
             StringBuilder nameBuilder = trx.getAndOverrideName(AbstractSpan.PRIORITY_LOW_LEVEL_FRAMEWORK);
@@ -61,7 +82,6 @@ public class RouteExecutorAdvice {
             nameBuilder.append(controllerName);
             nameBuilder.append("#");
             nameBuilder.append(methodName);
-
         }
     }
 }
